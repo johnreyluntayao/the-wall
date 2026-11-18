@@ -16,18 +16,21 @@ export type Database = {
     Tables: {
       posts: {
         Row: {
+          image_path: string | null
           body: string
           created_at: string
           id: string
           user_id: string | null
         }
         Insert: {
+          image_path?: string | null
           body: string
           created_at?: string
           id?: string
           user_id?: string | null
         }
         Update: {
+          image_path?: string | null
           body?: string
           created_at?: string
           id?: string

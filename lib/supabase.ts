@@ -13,6 +13,15 @@ export function getSupabase() {
     throw new Error("Set the Supabase URL and publishable key in .env.local.");
   }
   client = createClient<Database>(url, key, {
+    global: {
+      fetch: (input, init) => fetch(input, {
+        ...init,
+        signal: AbortSignal.any([
+          ...(init?.signal ? [init.signal] : []),
+          AbortSignal.timeout(30000),
+        ]),
+      }),
+    },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   return client;

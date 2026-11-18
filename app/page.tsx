@@ -13,7 +13,7 @@ export default function Home() {
         </div>
         <AboutPanel />
       </main>
-      <div className="page-bottom"><span>the wall.</span><p>A little less noise. A little more us.</p><span>✳</span></div>
+      <footer className="page-bottom"><span>The Wall · A little like 2009.</span><p>Made for the moments in between.</p><a href="#wall">Back to top ↑</a></footer>
     </>
   );
 }

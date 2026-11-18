@@ -1,92 +1,89 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createPost, listPosts, subscribeToPosts, type Post } from "@/lib/posts";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
 
-function mergePosts(current: Post[], incoming: Post[]) {
-  const unique = new Map(current.map((post) => [post.id, post]));
-  incoming.forEach((post) => unique.set(post.id, post));
-  return [...unique.values()].sort((a, b) =>
-    b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
-}
+type FeedPage = { page: number; posts: Post[]; pageCount: number };
 
 export function useWall() {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [feed, setFeed] = useState<FeedPage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [revision, setRevision] = useState(0);
-  const nextPage = useRef(1);
-  const loadingPage = useRef(false);
+  const refresh = useCallback(() => setRevision((value) => value + 1), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadPage() {
+      try {
+        const { posts, total } = await listPosts(page - 1, PAGE_SIZE, controller.signal);
+        if (controller.signal.aborted) return;
+        const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        setError(null);
+        if (page > pageCount) {
+          setPage(pageCount);
+          return;
+        }
+        setFeed({ page, posts, pageCount });
+      } catch {
+        if (!controller.signal.aborted) setError("We couldn’t load this page. Please try again.");
+      }
+    }
+    void loadPage();
+    return () => controller.abort();
+  }, [page, revision]);
 
   useEffect(() => {
     let active = true;
-    let fetching = false;
-    let refreshAgain = false;
-    async function refresh() {
-      if (fetching) { refreshAgain = true; return; }
-      fetching = true;
-      try {
-        const latest = await listPosts(0, PAGE_SIZE);
-        if (!active) return;
-        setPosts((current) => mergePosts(current, latest));
-        if (nextPage.current === 1) setHasMore(latest.length === PAGE_SIZE);
-        setError(null);
-      } catch {
-        if (active) setError("We couldn’t load the wall. Please try again.");
-      } finally {
-        fetching = false;
-        if (active) {
-          setLoading(false);
-          if (refreshAgain) { refreshAgain = false; void refresh(); }
-        }
-      }
+    let unsubscribe = () => {};
+    try {
+      unsubscribe = subscribeToPosts(
+        () => { if (active) refresh(); },
+        (status) => {
+          if (!active) return;
+          setLive(status === "SUBSCRIBED");
+          if (status === "SUBSCRIBED") refresh();
+        },
+      );
+    } catch {
+      // Feed loading below surfaces configuration/network errors with Retry.
     }
-    const unsubscribe = subscribeToPosts(
-      (post) => { if (active) setPosts((current) => mergePosts(current, [post])); },
-      (status) => {
-        if (!active) return;
-        setLive(status === "SUBSCRIBED");
-        if (status === "SUBSCRIBED") void refresh();
-      },
-    );
-    void refresh();
-    const onFocus = () => { void refresh(); };
-    window.addEventListener("focus", onFocus);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     return () => {
       active = false;
       unsubscribe();
-      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
     };
-  }, [revision]);
+  }, [refresh]);
 
-  const share = useCallback(async (message: string) => {
-    const post = await createPost(message);
-    setPosts((current) => mergePosts(current, [post]));
-  }, []);
+  const share = useCallback(async (message: string, photo?: File, requestId?: string) => {
+    await createPost(message, photo, requestId);
+    setPage(1);
+    setError(null);
+    refresh();
+  }, [refresh]);
 
-  async function loadMore() {
-    if (loadingPage.current) return;
-    loadingPage.current = true;
-    setLoadingMore(true);
-    try {
-      const older = await listPosts(nextPage.current, PAGE_SIZE);
-      setPosts((current) => mergePosts(current, older));
-      nextPage.current += 1;
-      setHasMore(older.length === PAGE_SIZE);
+  const current = feed?.page === page ? feed : null;
+  return {
+    posts: current?.posts ?? [],
+    loading: !current && !error,
+    error,
+    live,
+    page,
+    pageCount: feed?.pageCount ?? 1,
+    share,
+    goToPage: (next: number) => {
       setError(null);
-    } catch {
-      setError("We couldn’t load older posts. Please try Older posts again.");
-    } finally {
-      loadingPage.current = false;
-      setLoadingMore(false);
-    }
-  }
-
-  return { posts, loading, error, live, hasMore, loadingMore, share, loadMore,
-    retry: () => { setLoading(true); setRevision((value) => value + 1); } };
+      setPage(next);
+    },
+    retry: () => {
+      setError(null);
+      refresh();
+    },
+  };
 }

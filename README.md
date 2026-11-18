@@ -39,22 +39,21 @@ No service-role key or database password is needed.
 
 Import from `@/lib/posts`:
 
-- `listPosts(page?, pageSize?)`: newest-first pages, default 50 posts.
+- `listPosts(page?, pageSize?)`: posts and total count, newest first, 10 per page by default. The first page is index 0.
 - `createPost(message)`: validates and saves a message, returning its row.
 - `subscribeToPosts(onPost, onStatus?)`: receives new posts and returns a
   cleanup function for a client component effect.
 - `countCharacters(message)` and `MAX_POST_LENGTH`: Unicode-aware counter.
 
-Subscribe before loading the feed. Refetch when the status is `SUBSCRIBED`
-(also emitted after reconnection), merge fetched/created/realtime rows by ID,
-and sort by descending `created_at`, then ID. Display loading and error states;
-do not overwrite new events with an older fetch result.
+Reload the selected page when Realtime connects or a post arrives. Each query
+sorts by descending `created_at`, then ID, and returns the current page count.
 
 The table has UUID IDs, nullable `user_id`, message `body`, and server timestamps.
 Database checks reject null, blank, and over-280-character messages.
 RLS allows public reads and anonymous posting as required by the challenge.
-Only `body` is writable: visitors cannot set identity/timestamps or edit/delete
-posts. There is no login, rate limiter, or moderation system in this scope.
+Visitors can supply a draft UUID, body, and matching image path. User identity
+and timestamps remain protected; visitors cannot edit/delete posts.
+There is no login, rate limiter, or moderation system in this scope.
 Realtime INSERT delivery is enabled through `supabase_realtime`.
 
 ### Backend verification
@@ -74,10 +73,28 @@ styles are in `app/wall.css`, imported by the global stylesheet.
 - `components/ui/`: reusable UI primitives.
 - `lib/imports.ts`: shared UI and icon exports. Feature components use a
   separate barrel to avoid circular imports.
-- `hooks/use-wall.ts`: Supabase loading, sharing, pagination, Realtime, and deduplication.
+- `hooks/use-wall.ts`: Supabase loading, sharing, pagination, and Realtime.
 
 Share saves to Supabase; posts reload on refresh and arrive through Realtime.
-Older posts are available through the Older posts button. All posts use the
-fixed name Wall Visitor. Photo uploads are not included.
+Older posts are available through the numbered pager. All posts use the
+fixed name Johnrey V. Luntayao and the supplied profile photo. Johnrey’s profile details are centralized in
+`lib/profile.ts`; the advertisement uses a captured portfolio screenshot.
+
+### Photo uploads
+
+The hosted `add_wall_photo_uploads` migration is recorded in
+`supabase/photo-uploads.sql`. Apply it after `schema.sql` for a fresh project.
+Photos are saved in the public `wall-images` Storage bucket, with their path
+stored in `posts.image_path`. JPEG, PNG, and WebP files up to 5 MB are accepted.
+Photo-only posts are supported. Selection checks also reject corrupt images
+and images over 40 megapixels. The bucket enforces MIME and size restrictions.
+
+Draft UUIDs make retries idempotent. Failed submissions preserve text and the
+selected photo; repeated attempts reuse an uploaded file. Storage and database
+writes are separate, so abandoning a draft after upload but before a successful
+insert can leave an unreferenced object. Admins can clean those through Storage;
+anonymous deletion and overwrites are intentionally disabled.
+
+Run `node scripts/test-posts.mjs` for validation and failure-path tests.
 
 Run `npm run dev` to preview locally. This work has not deployed to Vercel.
