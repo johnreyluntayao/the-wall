@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "My Wall",
-  description: "A 2008-style social wall.",
+  title: "The Wall — A little like 2009",
+  description: "A nostalgic public wall. Share a thought, a memory, or a hello. No account needed.",
 };
 
 export default function RootLayout({
